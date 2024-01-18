@@ -34,7 +34,7 @@
 #include "../mtk_eth_reset.h"
 
 #define do_ge2ext_fast(dev, skb)                                               \
-	((IS_LAN(dev) || IS_WAN(dev) || IS_PPD(dev)) && \
+	((IS_LAN(dev) || IS_WAN(dev) || IS_PPD(dev) || IS_EXT(dev)) && \
 	 skb_hnat_is_hashed(skb) && \
 	 skb_hnat_reason(skb) == HIT_BIND_FORCE_TO_CPU)
 #define do_ext2ge_fast_learn(dev, skb)                                         \
@@ -523,6 +523,7 @@ unsigned int do_hnat_ge_to_ext(struct sk_buff *skb, const char *func)
 		skb_set_network_header(skb, 0);
 		skb_push(skb, ETH_HLEN);
 		dev_queue_xmit(skb);
+		skb->pkt_type = PACKET_HOST;
 		trace_printk("%s: called from %s successfully\n", __func__,
 			     func);
 		return 0;
@@ -862,7 +863,8 @@ mtk_hnat_nf_conntrack(void *priv, struct sk_buff *skb,
 		goto drop;
 	
 	if (unlikely(skb_hnat_reason(skb) == HIT_BIND_KEEPALIVE_DUP_OLD_HDR))
-		{if (hnat_priv->data->per_flow_accounting && hnat_priv->nf_stat_en)
+		{
+		if (hnat_priv->data->per_flow_accounting && hnat_priv->nf_stat_en)
 			mtk_hnat_nf_update(skb);}
 		
 	return NF_ACCEPT;
@@ -1040,7 +1042,7 @@ mtk_hnat_br_nf_local_in(void *priv, struct sk_buff *skb,
 		return NF_ACCEPT;
 	}
 	
-	if (skb_hnat_iface(skb) != FOE_MAGIC_EXT)
+	
 	hnat_set_head_frags(state, skb, -1, hnat_set_iif);
 
 	pre_routing_print(skb, state->in, state->out, __func__);
@@ -1328,6 +1330,9 @@ static unsigned int skb_to_hnat_info(struct sk_buff *skb,
 
 	entry.bfib1.pkt_type = foe->udib1.pkt_type; /* Get packte type state*/
 	entry.bfib1.state = foe->udib1.state;
+	
+	if (unlikely(entry.bfib1.state != UNBIND))
+ 		return 0;
 
 #if defined(CONFIG_MEDIATEK_NETSYS_V2)
 	entry.bfib1.sp = foe->udib1.sp;
@@ -2000,7 +2005,7 @@ int mtk_sw_nat_hook_tx(struct sk_buff *skb, int gmac_no)
 				entry->ipv6_5t_route.iblk2.fqos = 1;
 			}
 		}
-		entry->ipv6_5t_route.iblk2.dp = gmac_no;
+				entry->ipv6_5t_route.iblk2.dp = gmac_no;
 	}
 
 	bfib1_tx.ttl = 1;
@@ -2199,9 +2204,6 @@ static unsigned int mtk_hnat_nf_post_routing(
 	if (!IS_LAN(out) && !IS_WAN(out) && !IS_EXT(out))
 		return 0;
 		
-	if (!IS_WHNAT(out) && IS_EXT(out) && FROM_WED(skb))
-		return 0;
-
 		
 	trace_printk("[%s] case hit, %x-->%s, reason=%x\n", __func__,
 		     skb_hnat_iface(skb), out->name, skb_hnat_reason(skb));
